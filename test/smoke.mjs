@@ -87,24 +87,26 @@ function runCase(name, entry, args) {
     })
 
     let output = ''
+    let ready = false
     const timer = setTimeout(() => {
       child.kill('SIGTERM')
       reject(new Error(`${name} timed out\n${output}`))
     }, 120000)
 
-    child.stdout.on('data', (chunk) => {
+    const onOutput = (chunk) => {
       output += chunk
       if (output.includes('vitepad ready')) {
+        ready = true
         clearTimeout(timer)
         child.kill('SIGTERM')
         resolve()
       }
-    })
-    child.stderr.on('data', (chunk) => {
-      output += chunk
-    })
+    }
+
+    child.stdout.on('data', onOutput)
+    child.stderr.on('data', onOutput)
     child.on('exit', (code) => {
-      if (!output.includes('vitepad ready')) {
+      if (!ready) {
         clearTimeout(timer)
         reject(new Error(`${name} exited with ${code}\n${output}`))
       }

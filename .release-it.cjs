@@ -5,7 +5,9 @@ module.exports = {
   },
   github: {
     release: true,
-    releaseNotes: 'toJSON(changelog)',
+    releaseNotes({ changelog }) {
+      return changelog
+    },
   },
   npm: {
     publish: true,
