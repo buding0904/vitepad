@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/buding0904/vitepad/compare/v0.2.1...v0.2.2) (2026-05-18)
+
+
+### fix
+
+* support --editor flag to fix ts error in vscode ([](https://github.com/buding0904/vitepad/commit/8fa64d5b8043fa87747cd286e27f6432acccd1f5))
+
 ## [0.2.1](https://github.com/buding0904/vitepad/compare/v0.2.0...v0.2.1) (2026-05-18)
 
 
