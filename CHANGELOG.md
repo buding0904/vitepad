@@ -1,0 +1,24 @@
+# Changelog
+
+# 0.2.0 (2026-05-18)
+
+
+### chore
+
+* add github link in package.json ([](https://github.com/buding0904/vitepad/commit/61624244862f38ece17a74d3d20f4c34c943f36a))
+
+
+### docs
+
+* update readme ([](https://github.com/buding0904/vitepad/commit/66e6eaccee48f5b8ab870887181b861ed4777d81))
+
+
+### feat
+
+* project init and complete first version ([](https://github.com/buding0904/vitepad/commit/126e78e7b5f5423210c615d920f9cdf6ce2c4fc5))
+
+
+### fix
+
+* fix log and frameworks cache logic ([](https://github.com/buding0904/vitepad/commit/65a258c4db961bee8380c4c8f64aed9f3fb1bbe0))
+* fix workflow and release script ([](https://github.com/buding0904/vitepad/commit/645aaced788b60ceb70017f8cf9ccb92beb28149))
