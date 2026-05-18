@@ -1,5 +1,12 @@
 # Changelog
 
+# [](https://github.com/buding0904/vitepad/compare/v0.2.2...vnull) (2026-05-18)
+
+
+### feat
+
+* remove --editor flag ([](https://github.com/buding0904/vitepad/commit/30dccac288ec3b12afd9013d6ff58ff7b0e5efc2))
+
 ## [0.2.2](https://github.com/buding0904/vitepad/compare/v0.2.1...v0.2.2) (2026-05-18)
 
 
