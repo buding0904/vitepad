@@ -32,6 +32,7 @@ export interface PackageLink {
 }
 
 const packageRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
+const requireFromPackage = createRequire(path.join(packageRoot, 'package.json'))
 const linkedPeerPackages = ['vite']
 const log = {
   framework(requested: string, resolved: string) {
@@ -56,7 +57,7 @@ export async function resolveFramework(spec: FrameworkSpec, options: { forceInst
       requested: 'vanilla',
       cacheStatus: 'local',
       aliases: [],
-      packageLinks: packageLinks(packageNodeModules(), ['tailwindcss']),
+      packageLinks: packageLinks(['tailwindcss']),
     }
   }
 
@@ -86,7 +87,7 @@ export async function resolveFramework(spec: FrameworkSpec, options: { forceInst
     cacheDir,
     aliases: [],
     packageLinks: [
-      ...packageLinks(packageNodeModules(), ['tailwindcss']),
+      ...packageLinks(['tailwindcss']),
       ...packageLinks(nodeModules, frameworkRuntimePackages(spec.name)),
     ],
   }
@@ -266,15 +267,27 @@ function frameworkPluginPackages(framework: FrameworkName): string[] {
   }
 }
 
-function packageLinks(nodeModules: string, packageNames: string[]): PackageLink[] {
+function packageLinks(packageNames: string[]): PackageLink[]
+function packageLinks(nodeModules: string, packageNames: string[]): PackageLink[]
+function packageLinks(nodeModulesOrPackageNames: string | string[], maybePackageNames?: string[]): PackageLink[] {
+  if (Array.isArray(nodeModulesOrPackageNames)) {
+    return nodeModulesOrPackageNames.map((packageName) => ({
+      name: packageName,
+      source: resolveInstalledPackageDir(packageName),
+    }))
+  }
+
+  const nodeModules = nodeModulesOrPackageNames
+  const packageNames = maybePackageNames ?? []
   return packageNames.map((packageName) => ({
     name: packageName,
     source: path.join(nodeModules, packageName),
   }))
 }
 
-function packageNodeModules(): string {
-  return path.join(packageRoot, 'node_modules')
+function resolveInstalledPackageDir(packageName: string): string {
+  const packageJson = requireFromPackage.resolve(`${packageName}/package.json`)
+  return path.dirname(packageJson)
 }
 
 function frameworkCacheDir(framework: FrameworkName, version: string): string {
@@ -348,7 +361,7 @@ async function linkPeerPackages(cacheDir: string): Promise<void> {
   for (const packageName of linkedPeerPackages) {
     try {
       await linkPackage({
-        source: path.join(packageNodeModules(), packageName),
+        source: resolveInstalledPackageDir(packageName),
         target: path.join(cacheDir, 'node_modules', packageName),
       })
     } catch (error) {
