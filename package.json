@@ -48,6 +48,7 @@
   },
   "dependencies": {
     "@tailwindcss/vite": "latest",
+    "picocolors": "latest",
     "tailwindcss": "latest",
     "vite": "latest"
   },
@@ -55,7 +56,7 @@
     "@release-it/conventional-changelog": "latest",
     "@types/node": "latest",
     "czg": "latest",
-    "release-it": "latest",
+    "release-it": "^19.0.0",
     "release-it-pnpm": "latest",
     "tsup": "latest",
     "typescript": "^5.9.3"

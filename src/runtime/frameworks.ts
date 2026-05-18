@@ -5,7 +5,8 @@ import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { normalizePath, type Alias, type PluginOption } from 'vite'
+import { type Alias, type PluginOption } from 'vite'
+import pc from 'picocolors'
 
 export type FrameworkName = 'react' | 'preact' | 'solid' | 'vue' | 'svelte' | 'vanilla'
 export type Framework = 'auto' | FrameworkName
@@ -18,12 +19,31 @@ export interface FrameworkSpec {
 export interface ResolvedFramework {
   name: FrameworkName
   version: string
+  requested: string
+  cacheStatus: 'hit' | 'miss' | 'local'
   cacheDir?: string
   aliases: Alias[]
+  packageLinks: PackageLink[]
 }
 
-const rootDir = path.resolve(fileURLToPath(new URL('..', import.meta.url)), '..')
-const cacheVersion = 'v1'
+export interface PackageLink {
+  name: string
+  source: string
+}
+
+const packageRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
+const linkedPeerPackages = ['vite']
+const log = {
+  framework(requested: string, resolved: string) {
+    console.log(`\n${pc.cyan('vitepad')} ${pc.bold('framework')} ${pc.gray(requested)} ${pc.gray('->')} ${pc.green(resolved)}`)
+  },
+  install(packages: string[]) {
+    console.log(`  ${pc.gray('install')} ${packages.map((pkg) => pc.cyan(pkg)).join(pc.gray(', '))}`)
+  },
+  done(message: string) {
+    console.log(`  ${pc.green(message)}`)
+  },
+}
 
 export async function resolveFramework(spec: FrameworkSpec, options: { forceInstall: boolean }): Promise<ResolvedFramework> {
   if (spec.name === 'auto') {
@@ -33,33 +53,64 @@ export async function resolveFramework(spec: FrameworkSpec, options: { forceInst
     return {
       name: 'vanilla',
       version: 'local',
-      aliases: packageAliases(packageNodeModules(), ['tailwindcss']),
+      requested: 'vanilla',
+      cacheStatus: 'local',
+      aliases: [],
+      packageLinks: packageLinks(packageNodeModules(), ['tailwindcss']),
     }
   }
 
-  const packages = frameworkPackages(spec.name, spec.version)
-  const cacheDir = frameworkCacheDir(spec.name, spec.version)
+  const resolved = await resolveFrameworkPackages(spec.name, spec.version)
+  const cacheDir = frameworkCacheDir(spec.name, resolved.version)
   const nodeModules = path.join(cacheDir, 'node_modules')
+  const installed = await isInstalled(cacheDir, resolved.packages)
 
   if (options.forceInstall && await pathExists(cacheDir)) {
     await fs.rm(cacheDir, { recursive: true, force: true })
   }
 
-  if (!await isInstalled(cacheDir, packages)) {
-    await installFrameworkCache(cacheDir, packages)
-  } else {
-    console.log(`vitepad: using cached ${spec.name}@${spec.version}`)
-    console.log(`vitepad: cache ${cacheDir}`)
+  log.framework(`${spec.name}@${spec.version}`, `${spec.name}@${resolved.version}`)
+  const cacheStatus = options.forceInstall ? 'miss' : installed ? 'hit' : 'miss'
+
+  if (options.forceInstall || !installed) {
+    log.install(resolved.packages)
+    await installFrameworkCache(cacheDir, resolved.packages)
   }
+  await linkPeerPackages(cacheDir)
 
   return {
     name: spec.name,
-    version: spec.version,
+    version: resolved.version,
+    requested: `${spec.name}@${spec.version}`,
+    cacheStatus,
     cacheDir,
-    aliases: [
-      ...packageAliases(packageNodeModules(), ['tailwindcss']),
-      ...packageAliases(nodeModules, frameworkRuntimePackages(spec.name)),
+    aliases: [],
+    packageLinks: [
+      ...packageLinks(packageNodeModules(), ['tailwindcss']),
+      ...packageLinks(nodeModules, frameworkRuntimePackages(spec.name)),
     ],
+  }
+}
+
+async function resolveFrameworkPackages(framework: FrameworkName, version: string): Promise<{ version: string, packages: string[] }> {
+  const specs = frameworkPackageSpecs(framework, version)
+  const resolved = await Promise.all(specs.map(async (spec) => {
+    const parsed = splitPackageSpec(spec)
+    const resolvedVersion = await resolvePackageVersion(parsed.name, parsed.version)
+    return {
+      name: parsed.name,
+      version: resolvedVersion,
+      spec: `${parsed.name}@${resolvedVersion}`,
+    }
+  }))
+  const primary = splitPackageSpec(specs[0]).name
+  const primaryVersion = resolved.find((pkg) => pkg.name === primary)?.version
+  if (!primaryVersion) {
+    throw new Error(`Failed to resolve ${framework}@${version}.`)
+  }
+  return {
+    version: primaryVersion,
+    packages: resolved.map((pkg) => pkg.spec),
   }
 }
 
@@ -94,13 +145,31 @@ export async function loadFrameworkPlugins(framework: ResolvedFramework): Promis
   const plugins: PluginOption[] = []
   for (const pluginPackage of frameworkPluginPackages(framework.name)) {
     const mod = await importCachePackage(framework.cacheDir, pluginPackage)
-    if (pluginPackage === '@sveltejs/vite-plugin-svelte') {
-      appendPlugin(plugins, mod.svelte())
-    } else {
-      appendPlugin(plugins, mod.default())
-    }
+    appendPlugin(plugins, createFrameworkPlugin(pluginPackage, mod))
   }
   return plugins
+}
+
+function createFrameworkPlugin(pluginPackage: string, mod: Record<string, any>): PluginOption {
+  const factory = frameworkPluginFactory(pluginPackage, mod)
+  return factory()
+}
+
+function frameworkPluginFactory(pluginPackage: string, mod: Record<string, any>): () => PluginOption {
+  if (pluginPackage === '@sveltejs/vite-plugin-svelte' && typeof mod.svelte === 'function') {
+    return mod.svelte
+  }
+  if (pluginPackage === '@preact/preset-vite' && typeof mod.preact === 'function') {
+    return mod.preact
+  }
+  if (typeof mod.default === 'function') {
+    return mod.default
+  }
+  if (mod.default && typeof mod.default.default === 'function') {
+    return mod.default.default
+  }
+
+  throw new Error(`Failed to load Vite plugin ${pluginPackage}: no callable plugin export found.`)
 }
 
 export function appendPlugin(plugins: PluginOption[], plugin: PluginOption): void {
@@ -111,7 +180,7 @@ export function appendPlugin(plugins: PluginOption[], plugin: PluginOption): voi
   }
 }
 
-function frameworkPackages(framework: FrameworkName, version: string): string[] {
+function frameworkPackageSpecs(framework: FrameworkName, version: string): string[] {
   switch (framework) {
     case 'react':
       return [`react@${version}`, `react-dom@${version}`, '@vitejs/plugin-react@latest']
@@ -126,6 +195,41 @@ function frameworkPackages(framework: FrameworkName, version: string): string[] 
     case 'vanilla':
       return []
   }
+}
+
+function resolvePackageVersion(name: string, range: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('npm', ['view', `${name}@${range}`, 'version', '--json'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk
+    })
+    child.on('error', reject)
+    child.on('exit', (code) => {
+      if (code !== 0) {
+        reject(new Error(`npm view failed for ${name}@${range}\n${stderr.trim()}`))
+        return
+      }
+
+      try {
+        const parsed = JSON.parse(stdout.trim())
+        const version = Array.isArray(parsed) ? parsed[parsed.length - 1] : parsed
+        if (typeof version !== 'string' || !version) {
+          throw new Error(`Unexpected npm view output: ${stdout}`)
+        }
+        resolve(version)
+      } catch (error) {
+        reject(error)
+      }
+    })
+  })
 }
 
 function frameworkRuntimePackages(framework: FrameworkName): string[] {
@@ -162,31 +266,21 @@ function frameworkPluginPackages(framework: FrameworkName): string[] {
   }
 }
 
-function packageAliases(nodeModules: string, packageNames: string[]): Alias[] {
-  return packageNames.flatMap((packageName) => [
-    {
-      find: packageName,
-      replacement: path.join(nodeModules, packageName),
-    },
-    {
-      find: new RegExp(`^${escapeRegExp(packageName)}(/.*)$`),
-      replacement: `${normalizePath(path.join(nodeModules, packageName))}$1`,
-    },
-  ])
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+function packageLinks(nodeModules: string, packageNames: string[]): PackageLink[] {
+  return packageNames.map((packageName) => ({
+    name: packageName,
+    source: path.join(nodeModules, packageName),
+  }))
 }
 
 function packageNodeModules(): string {
-  return path.join(rootDir, 'node_modules')
+  return path.join(packageRoot, 'node_modules')
 }
 
 function frameworkCacheDir(framework: FrameworkName, version: string): string {
   const base = process.env.VITEPAD_CACHE_DIR
     || (process.env.XDG_CACHE_HOME ? path.join(process.env.XDG_CACHE_HOME, 'vitepad') : path.join(os.homedir(), '.cache', 'vitepad'))
-  return path.join(base, cacheVersion, `${framework}-${sanitizeCacheKey(version)}`)
+  return path.join(base, 'frameworks', `${framework}-${sanitizeCacheKey(version)}`)
 }
 
 function sanitizeCacheKey(value: string): string {
@@ -212,18 +306,12 @@ async function installFrameworkCache(cacheDir: string, packages: string[]): Prom
     dependencies: Object.fromEntries(packages.map((pkg) => packageToDependency(pkg))),
   }, null, 2))
 
-  console.log('vitepad: framework cache miss')
-  console.log(`vitepad: cache ${cacheDir}`)
-  for (const pkg of packages) {
-    console.log(`vitepad: downloading ${pkg}`)
-  }
-
   await runInstall(cacheDir)
 }
 
 function runInstall(cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn('npm', ['install', '--no-audit', '--no-fund', '--loglevel=notice'], {
+    const child = spawn('npm', ['install', '--legacy-peer-deps', '--no-audit', '--no-fund', '--loglevel=notice'], {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
@@ -246,13 +334,43 @@ function runInstall(cwd: string): Promise<void> {
     child.on('exit', (code) => {
       progress.stop()
       if (code === 0) {
-        console.log('vitepad: framework packages installed')
+        log.done('install complete')
         resolve()
       } else {
         reject(new Error(`npm install failed with exit code ${code}\n${output.trim()}`))
       }
     })
   })
+}
+
+async function linkPeerPackages(cacheDir: string): Promise<void> {
+  await fs.mkdir(path.join(cacheDir, 'node_modules'), { recursive: true })
+  for (const packageName of linkedPeerPackages) {
+    try {
+      await linkPackage({
+        source: path.join(packageNodeModules(), packageName),
+        target: path.join(cacheDir, 'node_modules', packageName),
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new Error(`Failed to link ${packageName} into vitepad cache at ${cacheDir}.\n${message}`)
+    }
+  }
+}
+
+async function linkPackage(input: { source: string, target: string }): Promise<void> {
+  const source = await fs.realpath(input.source)
+  const existing = await fs.lstat(input.target).catch(() => null)
+
+  if (existing) {
+    if (existing.isSymbolicLink()) {
+      const current = await fs.realpath(input.target).catch(() => null)
+      if (current === source) return
+    }
+    await fs.rm(input.target, { recursive: true, force: true })
+  }
+
+  await fs.symlink(source, input.target, 'dir')
 }
 
 function createProgress(label: string): { tick: () => void, stop: () => void } {

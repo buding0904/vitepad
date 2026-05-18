@@ -94,7 +94,7 @@ function runCase(name, entry, args) {
 
     child.stdout.on('data', (chunk) => {
       output += chunk
-      if (output.includes('vitepad:')) {
+      if (output.includes('vitepad ready')) {
         clearTimeout(timer)
         child.kill('SIGTERM')
         resolve()
@@ -104,7 +104,7 @@ function runCase(name, entry, args) {
       output += chunk
     })
     child.on('exit', (code) => {
-      if (!output.includes('vitepad:')) {
+      if (!output.includes('vitepad ready')) {
         clearTimeout(timer)
         reject(new Error(`${name} exited with ${code}\n${output}`))
       }

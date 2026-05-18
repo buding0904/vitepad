@@ -37,7 +37,8 @@ Framework versions:
 - `--framework react` uses `react@latest`.
 - `--framework react@18` uses `react@18` and `react-dom@18`.
 - `--framework vue@3.4`, `svelte@5`, `solid@1`, and `preact@10` follow the same pattern.
-- Framework packages are downloaded on first use into `~/.cache/vitepad`.
+- Framework version ranges are resolved to exact npm versions before caching.
+- Framework packages are downloaded on first use into `~/.cache/vitepad/frameworks`, for example `react-19.2.6`.
 - User project dependencies still resolve from the user's working directory; vitepad only aliases framework core packages to its cache.
 - Use `--force-install` to recreate the selected framework cache.
 

@@ -4,7 +4,8 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { createServer, mergeConfig, normalizePath, type PluginOption, type UserConfig } from 'vite'
+import { createLogger, createServer, mergeConfig, normalizePath, type LogOptions, type Logger, type PluginOption, type UserConfig } from 'vite'
+import pc from 'picocolors'
 
 import {
   appendPlugin,
@@ -15,6 +16,7 @@ import {
   type Framework,
   type FrameworkName,
   type FrameworkSpec,
+  type PackageLink,
   type ResolvedFramework,
 } from './frameworks.js'
 
@@ -33,7 +35,7 @@ export interface VitepadOptions {
   help: boolean
 }
 
-const rootDir = path.resolve(fileURLToPath(new URL('..', import.meta.url)), '..')
+const rootDir = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 const supportedComponentExts = new Set(['.jsx', '.tsx', '.vue', '.svelte'])
 const supportedMainExts = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'])
 const frameworkValues = new Set<Framework>(['auto', 'react', 'preact', 'solid', 'vue', 'svelte', 'vanilla'])
@@ -68,7 +70,15 @@ export async function run(argv: string[]): Promise<void> {
   validateCombination({ mode, framework: framework.name, extension })
 
   const resolvedFramework = await resolveFramework(framework, { forceInstall: options.forceInstall })
-  const workspace = await createWorkspace({ entry, mode, framework: resolvedFramework.name })
+  const classTokens = await collectClassTokens(entry)
+  const workspace = await createWorkspace({
+    entry,
+    mode,
+    framework: resolvedFramework.name,
+    sourceDirs: uniquePaths([process.cwd(), path.dirname(entry)]),
+    classTokens,
+    packageLinks: resolvedFramework.packageLinks,
+  })
   const config = await loadUserConfig(options.config)
 
   const server = await createServer(mergeConfig({
@@ -78,6 +88,9 @@ export async function run(argv: string[]): Promise<void> {
       host: options.host,
       port: options.port,
       open: options.open,
+      watch: {
+        ignored: (file: string) => normalizePath(file).startsWith(`${normalizePath(workspace)}/`),
+      },
       fs: {
         allow: [
           rootDir,
@@ -103,11 +116,16 @@ export async function run(argv: string[]): Promise<void> {
       entries: [path.join(workspace, 'src/main.js')],
       include: frameworkOptimizeDeps(resolvedFramework.name),
     },
+    customLogger: createVitepadLogger(),
   }, config))
 
   await server.listen()
-  server.printUrls()
-  console.log(`vitepad: ${resolvedFramework.name}@${resolvedFramework.version} ${mode} from ${entry}`)
+  printReady({
+    entry,
+    mode,
+    framework: resolvedFramework,
+    urls: server.resolvedUrls,
+  })
 
   const close = async () => {
     await server.close()
@@ -221,16 +239,97 @@ function validateCombination(input: { mode: EntryMode, framework: Framework, ext
   }
 }
 
-async function createWorkspace(input: { entry: string, mode: EntryMode, framework: FrameworkName }): Promise<string> {
+async function createWorkspace(input: { entry: string, mode: EntryMode, framework: FrameworkName, sourceDirs: string[], classTokens: string[], packageLinks: PackageLink[] }): Promise<string> {
   const workspace = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'vitepad-'))
   const srcDir = path.join(workspace, 'src')
+  const nodeModulesDir = path.join(workspace, 'node_modules')
   await fs.mkdir(srcDir, { recursive: true })
+  await fs.mkdir(nodeModulesDir, { recursive: true })
   await Promise.all([
     fs.writeFile(path.join(workspace, 'index.html'), htmlTemplate()),
-    fs.writeFile(path.join(srcDir, 'style.css'), '@import "tailwindcss";\n'),
+    fs.writeFile(path.join(srcDir, 'style.css'), styleTemplate(input.sourceDirs, input.classTokens)),
     fs.writeFile(path.join(srcDir, 'main.js'), mainTemplate(input)),
+    ...input.packageLinks.map((link) => linkWorkspacePackage(nodeModulesDir, link)),
   ])
   return workspace
+}
+
+async function linkWorkspacePackage(nodeModulesDir: string, link: PackageLink): Promise<void> {
+  const source = await fs.realpath(link.source)
+  const target = path.join(nodeModulesDir, link.name)
+  await fs.mkdir(path.dirname(target), { recursive: true })
+  await fs.symlink(source, target, 'dir')
+}
+
+function uniquePaths(paths: string[]): string[] {
+  return [...new Set(paths.map((item) => normalizePath(path.resolve(item))))]
+}
+
+function styleTemplate(sourceDirs: string[], classTokens: string[]): string {
+  return [
+    '@import "tailwindcss";',
+    ...sourceDirs.map((sourceDir) => `@source ${JSON.stringify(sourceDir)};`),
+    classTokens.length ? `/* vitepad safelist: ${classTokens.join(' ')} */` : '',
+    '',
+  ].join('\n')
+}
+
+async function collectClassTokens(entry: string): Promise<string[]> {
+  const visited = new Set<string>()
+  const tokens = new Set<string>()
+  await collectFileClassTokens(entry, visited, tokens)
+  return [...tokens].sort()
+}
+
+async function collectFileClassTokens(file: string, visited: Set<string>, tokens: Set<string>): Promise<void> {
+  const resolved = path.resolve(file)
+  if (visited.has(resolved)) return
+  visited.add(resolved)
+
+  const source = await fs.readFile(resolved, 'utf8').catch(() => '')
+  for (const match of source.matchAll(/\b(?:class|className)\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`})/g)) {
+    const value = match[1] || match[2] || match[3] || ''
+    for (const token of value.split(/\s+/)) {
+      if (token && !/[${}]/.test(token)) tokens.add(token)
+    }
+  }
+
+  for (const specifier of localImportSpecifiers(source)) {
+    const imported = await resolveLocalImport(resolved, specifier)
+    if (imported) {
+      await collectFileClassTokens(imported, visited, tokens)
+    }
+  }
+}
+
+function localImportSpecifiers(source: string): string[] {
+  const specifiers = new Set<string>()
+  for (const match of source.matchAll(/\bimport\s+(?:[^'"]+?\s+from\s+)?['"]([^'"]+)['"]/g)) {
+    if (isLocalSpecifier(match[1])) specifiers.add(match[1])
+  }
+  for (const match of source.matchAll(/\bexport\s+[^'"]+?\s+from\s+['"]([^'"]+)['"]/g)) {
+    if (isLocalSpecifier(match[1])) specifiers.add(match[1])
+  }
+  return [...specifiers]
+}
+
+function isLocalSpecifier(specifier: string): boolean {
+  return specifier.startsWith('./') || specifier.startsWith('../')
+}
+
+async function resolveLocalImport(importer: string, specifier: string): Promise<string | undefined> {
+  const base = path.resolve(path.dirname(importer), specifier)
+  const candidates = [
+    base,
+    ...['.ts', '.tsx', '.js', '.jsx', '.vue', '.svelte'].map((ext) => `${base}${ext}`),
+    ...['index.ts', 'index.tsx', 'index.js', 'index.jsx', 'index.vue', 'index.svelte'].map((file) => path.join(base, file)),
+  ]
+
+  for (const candidate of candidates) {
+    const stat = await fs.stat(candidate).catch(() => null)
+    if (stat?.isFile()) return candidate
+  }
+  return undefined
 }
 
 function htmlTemplate(): string {
@@ -316,6 +415,48 @@ async function loadPlugins(framework: ResolvedFramework): Promise<PluginOption[]
   appendPlugin(plugins, tailwindcss())
   plugins.push(...frameworkPlugins)
   return plugins
+}
+
+function printReady(input: { entry: string, mode: EntryMode, framework: ResolvedFramework, urls?: { local: string[], network: string[] } | null }): void {
+  const { entry, framework, urls } = input
+  const frameworkLabel = `${framework.name}@${framework.version}`
+
+  console.log(`${pc.cyan('vitepad')} ${pc.green('ready')} ${pc.green(frameworkLabel)}`)
+  console.log(`  ${pc.gray('entry')}     ${pc.gray(entry)}`)
+  if (framework.cacheDir) {
+    console.log(`  ${pc.gray('cache')}     ${pc.gray(framework.cacheDir)}`)
+  }
+  printUrls(urls)
+}
+
+function printUrls(urls: { local: string[], network: string[] } | null | undefined): void {
+  if (!urls) return
+  for (const url of urls.local) {
+    console.log(`  ${pc.green('➜')}  ${pc.bold('Local:')}   ${pc.bold(url)}`)
+  }
+  for (const url of urls.network) {
+    console.log(`  ${pc.green('➜')}  ${pc.bold('Network:')} ${pc.bold(url)}`)
+  }
+}
+
+function createVitepadLogger(): Logger {
+  const logger = createLogger('info')
+  const info = logger.info.bind(logger)
+  return {
+    ...logger,
+    info(message: string, options?: LogOptions) {
+      if (isNoisyViteInfo(message)) return
+      info(message, options)
+    },
+  }
+}
+
+function isNoisyViteInfo(message: string): boolean {
+  return /\[vite\]\s+\(client\)\s+(hmr update|page reload)\b/.test(stripAnsi(message))
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
 }
 
 function helpText(prefix?: string): string {
