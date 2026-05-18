@@ -24,6 +24,7 @@ export interface ResolvedFramework {
   cacheDir?: string
   aliases: Alias[]
   packageLinks: PackageLink[]
+  editorPackageLinks: PackageLink[]
 }
 
 export interface PackageLink {
@@ -58,6 +59,7 @@ export async function resolveFramework(spec: FrameworkSpec, options: { forceInst
       cacheStatus: 'local',
       aliases: [],
       packageLinks: packageLinks(['tailwindcss']),
+      editorPackageLinks: [],
     }
   }
 
@@ -90,6 +92,7 @@ export async function resolveFramework(spec: FrameworkSpec, options: { forceInst
       ...packageLinks(['tailwindcss']),
       ...packageLinks(nodeModules, frameworkRuntimePackages(spec.name)),
     ],
+    editorPackageLinks: packageLinks(nodeModules, frameworkEditorPackages(spec.name)),
   }
 }
 
@@ -184,7 +187,13 @@ export function appendPlugin(plugins: PluginOption[], plugin: PluginOption): voi
 function frameworkPackageSpecs(framework: FrameworkName, version: string): string[] {
   switch (framework) {
     case 'react':
-      return [`react@${version}`, `react-dom@${version}`, '@vitejs/plugin-react@latest']
+      return [
+        `react@${version}`,
+        `react-dom@${version}`,
+        `@types/react@${reactTypesVersion(version)}`,
+        `@types/react-dom@${reactTypesVersion(version)}`,
+        '@vitejs/plugin-react@latest',
+      ]
     case 'preact':
       return [`preact@${version}`, '@preact/preset-vite@latest']
     case 'solid':
@@ -196,6 +205,11 @@ function frameworkPackageSpecs(framework: FrameworkName, version: string): strin
     case 'vanilla':
       return []
   }
+}
+
+function reactTypesVersion(version: string): string {
+  const major = version.match(/^\D*(\d+)/)?.[1]
+  return major || 'latest'
 }
 
 function resolvePackageVersion(name: string, range: string): Promise<string> {
@@ -247,6 +261,19 @@ function frameworkRuntimePackages(framework: FrameworkName): string[] {
       return ['svelte']
     case 'vanilla':
       return []
+  }
+}
+
+function frameworkEditorPackages(framework: FrameworkName): string[] {
+  switch (framework) {
+    case 'react':
+      return ['react', 'react-dom', '@types/react', '@types/react-dom']
+    case 'preact':
+    case 'solid':
+    case 'vue':
+    case 'svelte':
+    case 'vanilla':
+      return frameworkRuntimePackages(framework)
   }
 }
 

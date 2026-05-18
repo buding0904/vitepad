@@ -43,8 +43,9 @@ Tailwind CSS is enabled by default. Framework packages are resolved to exact npm
 **Styling and environment**
 
 - Tailwind CSS v4 is available by default through `@tailwindcss/vite`
-- User project `node_modules` is not modified
+- User project `node_modules` is not modified by default
 - Framework dependencies are exposed through the temporary Vite workspace
+- Optional editor type support with `--editor`
 - No linting or formatting toolchain is installed
 
 ## Install
@@ -113,6 +114,7 @@ vitepad <entry> [options]
 | `-p, --port <number>` | Dev server port (default: `8000`) |
 | `--host <host>` | Dev server host (default: `0.0.0.0`) |
 | `--no-open` | Do not open the browser automatically |
+| `--editor` | Link framework packages into local `node_modules` for editor type resolution |
 | `-c, --config <file>` | Merge an extra Vite config file |
 | `-h, --help` | Show help |
 
@@ -121,9 +123,20 @@ Examples:
 ```bash
 vitepad ./App.tsx --framework react@18 --port 3000
 vitepad ./App.vue --host 127.0.0.1 --no-open
+vitepad ./App.tsx --framework react@19 --editor
 vitepad ./App.svelte --config ./vite.extra.js
 vitepad ./App.tsx --framework react@latest --force-install
 ```
+
+## Editor Types
+
+`vitepad` can run a TSX file without installing React in the current project, but VSCode's TypeScript server still resolves imports and JSX types from the opened workspace. If VSCode reports `react`, `react/jsx-runtime`, or framework type resolution errors, run:
+
+```bash
+vitepad ./App.tsx --framework react --editor
+```
+
+`--editor` creates lightweight symlinks for the selected framework packages inside the current directory's `node_modules`. For React, it also links `@types/react` and `@types/react-dom`. Existing packages are left untouched. Runtime dependencies still come from vitepad's cache, and vitepad does not write to `package.json`.
 
 ## Entry Rules
 
