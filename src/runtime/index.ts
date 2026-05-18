@@ -32,7 +32,6 @@ export interface VitepadOptions {
   host: string
   open: boolean | string
   config?: string
-  editor: boolean
   help: boolean
 }
 
@@ -71,9 +70,7 @@ export async function run(argv: string[]): Promise<void> {
   validateCombination({ mode, framework: framework.name, extension })
 
   const resolvedFramework = await resolveFramework(framework, { forceInstall: options.forceInstall })
-  if (options.editor) {
-    await setupEditorPackages(process.cwd(), resolvedFramework.editorPackageLinks)
-  }
+  await setupEditorPackages(path.dirname(entry), resolvedFramework.editorPackageLinks)
   const classTokens = await collectClassTokens(entry)
   const workspace = await createWorkspace({
     entry,
@@ -147,7 +144,6 @@ export function parseArgs(argv: string[]): VitepadOptions {
     port: 8000,
     host: '0.0.0.0',
     open: '/',
-    editor: false,
     help: false,
   }
 
@@ -173,8 +169,6 @@ export function parseArgs(argv: string[]): VitepadOptions {
       options.open = false
     } else if (arg === '--open') {
       options.open = '/'
-    } else if (arg === '--editor') {
-      options.editor = true
     } else if (arg === '--config' || arg === '-c') {
       options.config = readValue(argv, ++index, arg)
     } else if (arg.startsWith('--config=')) {
@@ -275,22 +269,15 @@ async function setupEditorPackages(projectDir: string, links: PackageLink[]): Pr
   await fs.mkdir(nodeModulesDir, { recursive: true })
 
   const linked: string[] = []
-  const skipped: string[] = []
   for (const link of links) {
     const result = await linkEditorPackage(nodeModulesDir, link)
     if (result === 'linked') {
       linked.push(link.name)
-    } else {
-      skipped.push(link.name)
     }
   }
 
   if (linked.length > 0) {
     console.log(`${pc.cyan('vitepad')} ${pc.green('editor')} linked ${linked.map((name) => pc.cyan(name)).join(pc.gray(', '))}`)
-  }
-  if (skipped.length > 0) {
-    console.log(`${pc.cyan('vitepad')} ${pc.yellow('editor')} kept existing ${skipped.map((name) => pc.cyan(name)).join(pc.gray(', '))}`)
-    console.log(`  ${pc.gray('VSCode will use the existing local package versions for editor types.')}`)
   }
 }
 
@@ -525,7 +512,6 @@ Options:
   -p, --port <number>       Dev server port. Default: 8000
   --host <host>             Dev server host. Default: 0.0.0.0
   --no-open                 Do not open the browser automatically.
-  --editor                  Link framework packages into local node_modules for editor type resolution.
   -c, --config <file>       Merge an extra Vite config file.
   -h, --help                Show help.
 `

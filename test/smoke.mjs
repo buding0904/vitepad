@@ -16,9 +16,10 @@ const cases = [
   },
   {
     name: 'react component',
-    file: 'App.tsx',
+    file: 'src/App.tsx',
     source: 'export default function App() { return <main className="p-4">React</main> }',
     args: ['--framework', 'react@18'],
+    editorLinks: ['react', 'react-dom', '@types/react', '@types/react-dom'],
   },
   {
     name: 'preact component',
@@ -50,14 +51,32 @@ try {
   for (const item of cases) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vitepad-smoke-'))
     const entry = path.join(dir, item.file)
+    await fs.mkdir(path.dirname(entry), { recursive: true })
     await fs.writeFile(entry, item.source)
     await runCase(item.name, entry, item.args)
+    await assertEditorLinks(item.name, path.dirname(entry), item.editorLinks || [])
     console.log(`smoke ok: ${item.name}`)
   }
 
   console.log('smoke ok')
 } finally {
   await fs.rm(cacheRoot, { recursive: true, force: true })
+}
+
+/**
+ * @param {string} name
+ * @param {string} dir
+ * @param {string[]} links
+ * @returns {Promise<void>}
+ */
+async function assertEditorLinks(name, dir, links) {
+  for (const link of links) {
+    const target = path.join(dir, 'node_modules', link)
+    const stat = await fs.lstat(target).catch(() => null)
+    if (!stat?.isSymbolicLink()) {
+      throw new Error(`${name} missing editor link: ${target}`)
+    }
+  }
 }
 
 /**

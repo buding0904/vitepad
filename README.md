@@ -43,9 +43,9 @@ Tailwind CSS is enabled by default. Framework packages are resolved to exact npm
 **Styling and environment**
 
 - Tailwind CSS v4 is available by default through `@tailwindcss/vite`
-- User project `node_modules` is not modified by default
 - Framework dependencies are exposed through the temporary Vite workspace
-- Optional editor type support with `--editor`
+- Missing framework packages are linked into local `node_modules` for editor type resolution
+- Existing local packages are left untouched, and `package.json` is not modified
 - No linting or formatting toolchain is installed
 
 ## Install
@@ -114,7 +114,6 @@ vitepad <entry> [options]
 | `-p, --port <number>` | Dev server port (default: `8000`) |
 | `--host <host>` | Dev server host (default: `0.0.0.0`) |
 | `--no-open` | Do not open the browser automatically |
-| `--editor` | Link framework packages into local `node_modules` for editor type resolution |
 | `-c, --config <file>` | Merge an extra Vite config file |
 | `-h, --help` | Show help |
 
@@ -123,20 +122,17 @@ Examples:
 ```bash
 vitepad ./App.tsx --framework react@18 --port 3000
 vitepad ./App.vue --host 127.0.0.1 --no-open
-vitepad ./App.tsx --framework react@19 --editor
 vitepad ./App.svelte --config ./vite.extra.js
 vitepad ./App.tsx --framework react@latest --force-install
 ```
 
 ## Editor Types
 
-`vitepad` can run a TSX file without installing React in the current project, but VSCode's TypeScript server still resolves imports and JSX types from the opened workspace. If VSCode reports `react`, `react/jsx-runtime`, or framework type resolution errors, run:
+VSCode's TypeScript server resolves imports and JSX types from the opened file's directory tree, not from vitepad's temporary Vite workspace. To keep editor diagnostics aligned with the file you run, vitepad creates lightweight symlinks for missing framework packages inside the entry file directory's `node_modules`.
 
-```bash
-vitepad ./App.tsx --framework react --editor
-```
+For React, vitepad links `react`, `react-dom`, `@types/react`, and `@types/react-dom` when they are missing. Existing packages are left untouched, so a project that already has React installed keeps using its local version for editor types. Runtime dependencies still come from vitepad's cache, and vitepad does not write to `package.json`.
 
-`--editor` creates lightweight symlinks for the selected framework packages inside the current directory's `node_modules`. For React, it also links `@types/react` and `@types/react-dom`. Existing packages are left untouched. Runtime dependencies still come from vitepad's cache, and vitepad does not write to `package.json`.
+If multiple vitepad processes run React entries in the same directory with different React versions, runtime behavior is still isolated per process. Editor links are shared by that directory, so whichever version is linked first is the version VSCode sees; later runs keep existing local packages instead of replacing them.
 
 ## Entry Rules
 
@@ -171,7 +167,7 @@ Example cache directory:
 ~/.cache/vitepad/frameworks/react-19.2.6
 ```
 
-If a framework version is not cached, vitepad downloads it and prints install progress. The user's working directory and `node_modules` are left untouched.
+If a framework version is not cached, vitepad downloads it and prints install progress. The user's `package.json` is left untouched. Missing framework packages may be symlinked into local `node_modules` so editors can resolve imports and JSX types.
 
 ## Local Development
 
