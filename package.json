@@ -43,6 +43,14 @@
   ],
   "author": "buding0904",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/buding0904/vitepad.git"
+  },
+  "bugs": {
+    "url": "https://github.com/buding0904/vitepad/issues"
+  },
+  "homepage": "https://github.com/buding0904/vitepad#readme",
   "publishConfig": {
     "access": "public"
   },
