@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/buding0904/vitepad/compare/v0.2.0...v0.2.1) (2026-05-18)
+
+
+### fix
+
+* fix path resolve bug ([](https://github.com/buding0904/vitepad/commit/f7005ae7ffc0ef19087e3ef8347d3b3d236dc4f2))
+
 # 0.2.0 (2026-05-18)
 
 
