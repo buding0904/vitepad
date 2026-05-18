@@ -1,0 +1,64 @@
+{
+  "name": "@buding0904/vitepad",
+  "version": "0.1.0",
+  "description": "Run a single frontend entry file in a temporary Vite playground.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "bin": {
+    "vitepad": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup && tsc --emitDeclarationOnly --declaration --declarationMap",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node ./test/smoke.mjs",
+    "commit": "czg",
+    "release": "release-it",
+    "prepublishOnly": "pnpm run build"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "vite",
+    "cli",
+    "playground",
+    "frontend",
+    "tailwindcss",
+    "react",
+    "vue",
+    "svelte",
+    "solid"
+  ],
+  "author": "buding0904",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "latest",
+    "tailwindcss": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@release-it/conventional-changelog": "latest",
+    "@types/node": "latest",
+    "czg": "latest",
+    "release-it": "latest",
+    "release-it-pnpm": "latest",
+    "tsup": "latest",
+    "typescript": "^5.9.3"
+  },
+  "packageManager": "pnpm@9.15.3"
+}
