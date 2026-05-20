@@ -71,13 +71,10 @@ export async function run(argv: string[]): Promise<void> {
 
   const resolvedFramework = await resolveFramework(framework, { forceInstall: options.forceInstall })
   await setupEditorPackages(path.dirname(entry), resolvedFramework.editorPackageLinks)
-  const classTokens = await collectClassTokens(entry)
   const workspace = await createWorkspace({
     entry,
     mode,
     framework: resolvedFramework.name,
-    sourceDirs: uniquePaths([process.cwd(), path.dirname(entry)]),
-    classTokens,
     packageLinks: resolvedFramework.packageLinks,
   })
   const config = await loadUserConfig(options.config)
@@ -240,7 +237,7 @@ function validateCombination(input: { mode: EntryMode, framework: Framework, ext
   }
 }
 
-async function createWorkspace(input: { entry: string, mode: EntryMode, framework: FrameworkName, sourceDirs: string[], classTokens: string[], packageLinks: PackageLink[] }): Promise<string> {
+async function createWorkspace(input: { entry: string, mode: EntryMode, framework: FrameworkName, packageLinks: PackageLink[] }): Promise<string> {
   const workspace = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'vitepad-'))
   const srcDir = path.join(workspace, 'src')
   const nodeModulesDir = path.join(workspace, 'node_modules')
@@ -248,7 +245,6 @@ async function createWorkspace(input: { entry: string, mode: EntryMode, framewor
   await fs.mkdir(nodeModulesDir, { recursive: true })
   await Promise.all([
     fs.writeFile(path.join(workspace, 'index.html'), htmlTemplate()),
-    fs.writeFile(path.join(srcDir, 'style.css'), styleTemplate(input.sourceDirs, input.classTokens)),
     fs.writeFile(path.join(srcDir, 'main.js'), mainTemplate(input)),
     ...input.packageLinks.map((link) => linkWorkspacePackage(nodeModulesDir, link)),
   ])
@@ -299,77 +295,6 @@ async function linkEditorPackage(nodeModulesDir: string, link: PackageLink): Pro
   return 'linked'
 }
 
-function uniquePaths(paths: string[]): string[] {
-  return [...new Set(paths.map((item) => normalizePath(path.resolve(item))))]
-}
-
-function styleTemplate(sourceDirs: string[], classTokens: string[]): string {
-  return [
-    '@import "tailwindcss";',
-    ...sourceDirs.map((sourceDir) => `@source ${JSON.stringify(sourceDir)};`),
-    classTokens.length ? `/* vitepad safelist: ${classTokens.join(' ')} */` : '',
-    '',
-  ].join('\n')
-}
-
-async function collectClassTokens(entry: string): Promise<string[]> {
-  const visited = new Set<string>()
-  const tokens = new Set<string>()
-  await collectFileClassTokens(entry, visited, tokens)
-  return [...tokens].sort()
-}
-
-async function collectFileClassTokens(file: string, visited: Set<string>, tokens: Set<string>): Promise<void> {
-  const resolved = path.resolve(file)
-  if (visited.has(resolved)) return
-  visited.add(resolved)
-
-  const source = await fs.readFile(resolved, 'utf8').catch(() => '')
-  for (const match of source.matchAll(/\b(?:class|className)\s*=\s*(?:"([^"]+)"|'([^']+)'|{`([^`]+)`})/g)) {
-    const value = match[1] || match[2] || match[3] || ''
-    for (const token of value.split(/\s+/)) {
-      if (token && !/[${}]/.test(token)) tokens.add(token)
-    }
-  }
-
-  for (const specifier of localImportSpecifiers(source)) {
-    const imported = await resolveLocalImport(resolved, specifier)
-    if (imported) {
-      await collectFileClassTokens(imported, visited, tokens)
-    }
-  }
-}
-
-function localImportSpecifiers(source: string): string[] {
-  const specifiers = new Set<string>()
-  for (const match of source.matchAll(/\bimport\s+(?:[^'"]+?\s+from\s+)?['"]([^'"]+)['"]/g)) {
-    if (isLocalSpecifier(match[1])) specifiers.add(match[1])
-  }
-  for (const match of source.matchAll(/\bexport\s+[^'"]+?\s+from\s+['"]([^'"]+)['"]/g)) {
-    if (isLocalSpecifier(match[1])) specifiers.add(match[1])
-  }
-  return [...specifiers]
-}
-
-function isLocalSpecifier(specifier: string): boolean {
-  return specifier.startsWith('./') || specifier.startsWith('../')
-}
-
-async function resolveLocalImport(importer: string, specifier: string): Promise<string | undefined> {
-  const base = path.resolve(path.dirname(importer), specifier)
-  const candidates = [
-    base,
-    ...['.ts', '.tsx', '.js', '.jsx', '.vue', '.svelte'].map((ext) => `${base}${ext}`),
-    ...['index.ts', 'index.tsx', 'index.js', 'index.jsx', 'index.vue', 'index.svelte'].map((file) => path.join(base, file)),
-  ]
-
-  for (const candidate of candidates) {
-    const stat = await fs.stat(candidate).catch(() => null)
-    if (stat?.isFile()) return candidate
-  }
-  return undefined
-}
-
 function htmlTemplate(): string {
   return `<!doctype html>
 <html lang="en">
@@ -390,12 +315,12 @@ function mainTemplate(input: { entry: string, mode: EntryMode, framework: Framew
   const { entry, mode, framework } = input
   const importPath = `/@fs/${normalizePath(entry)}`
   if (mode === 'main') {
-    return `import './style.css'\nimport ${JSON.stringify(importPath)}\n`
+    return `import 'virtual:uno.css'\nimport ${JSON.stringify(importPath)}\n`
   }
 
   switch (framework) {
     case 'react':
-      return `import './style.css'
+      return `import 'virtual:uno.css'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import App from ${JSON.stringify(importPath)}
@@ -403,28 +328,28 @@ import App from ${JSON.stringify(importPath)}
 createRoot(document.getElementById('root')).render(React.createElement(App))
 `
     case 'preact':
-      return `import './style.css'
+      return `import 'virtual:uno.css'
 import { h, render } from 'preact'
 import App from ${JSON.stringify(importPath)}
 
 render(h(App, null), document.getElementById('root'))
 `
     case 'solid':
-      return `import './style.css'
+      return `import 'virtual:uno.css'
 import { render } from 'solid-js/web'
 import App from ${JSON.stringify(importPath)}
 
 render(() => App({}), document.getElementById('root'))
 `
     case 'vue':
-      return `import './style.css'
+      return `import 'virtual:uno.css'
 import { createApp } from 'vue'
 import App from ${JSON.stringify(importPath)}
 
 createApp(App).mount('#root')
 `
     case 'svelte':
-      return `import './style.css'
+      return `import 'virtual:uno.css'
 import { mount } from 'svelte'
 import App from ${JSON.stringify(importPath)}
 
@@ -445,12 +370,13 @@ async function loadUserConfig(configFile: string | undefined): Promise<UserConfi
 }
 
 async function loadPlugins(framework: ResolvedFramework): Promise<PluginOption[]> {
-  const [{ default: tailwindcss }, frameworkPlugins] = await Promise.all([
-    import('@tailwindcss/vite'),
+  const [{ default: unocss }, { presetUno }, frameworkPlugins] = await Promise.all([
+    import('unocss/vite'),
+    import('unocss'),
     loadFrameworkPlugins(framework),
   ])
   const plugins: PluginOption[] = []
-  appendPlugin(plugins, tailwindcss())
+  appendPlugin(plugins, unocss({ presets: [presetUno()] }))
   plugins.push(...frameworkPlugins)
   return plugins
 }

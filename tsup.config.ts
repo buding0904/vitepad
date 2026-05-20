@@ -9,8 +9,8 @@ export default defineConfig({
   splitting: false,
   treeshake: true,
   external: [
-    '@tailwindcss/vite',
-    'tailwindcss',
+    'unocss',
+    'unocss/vite',
     'vite',
   ],
   esbuildOptions(options) {

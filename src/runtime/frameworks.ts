@@ -58,7 +58,7 @@ export async function resolveFramework(spec: FrameworkSpec, options: { forceInst
       requested: 'vanilla',
       cacheStatus: 'local',
       aliases: [],
-      packageLinks: packageLinks(['tailwindcss']),
+      packageLinks: packageLinks(['unocss']),
       editorPackageLinks: [],
     }
   }
@@ -89,7 +89,7 @@ export async function resolveFramework(spec: FrameworkSpec, options: { forceInst
     cacheDir,
     aliases: [],
     packageLinks: [
-      ...packageLinks(['tailwindcss']),
+      ...packageLinks(['unocss']),
       ...packageLinks(nodeModules, frameworkRuntimePackages(spec.name)),
     ],
     editorPackageLinks: packageLinks(nodeModules, frameworkEditorPackages(spec.name)),

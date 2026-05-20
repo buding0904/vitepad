@@ -7,7 +7,7 @@
     <a href="https://www.npmjs.com/package/@buding0904/vitepad"><img src="https://img.shields.io/npm/v/@buding0904/vitepad.svg" alt="npm version" /></a>
     <a href="./LICENSE"><img src="https://img.shields.io/npm/l/@buding0904/vitepad.svg" alt="license" /></a>
     <img src="https://img.shields.io/badge/frameworks-React%20%7C%20Preact%20%7C%20Solid%20%7C%20Vue%20%7C%20Svelte-blue" alt="frameworks" />
-    <img src="https://img.shields.io/badge/Tailwind-v4-38bdf8" alt="Tailwind CSS" />
+    <img src="https://img.shields.io/badge/UnoCSS-enabled-22c55e" alt="UnoCSS" />
   </p>
 </div>
 
@@ -15,7 +15,7 @@
 
 `vitepad` creates a temporary Vite playground for one entry file. Use it to preview a component, test a small main entry, or compare the same file across different framework versions without creating a project or changing the current project's dependencies.
 
-Tailwind CSS is enabled by default. Framework packages are resolved to exact npm versions, downloaded on demand, and cached under `~/.cache/vitepad/frameworks`. No ESLint, Biome, Husky, or formatting pipeline is included.
+UnoCSS is enabled by default. Framework packages are resolved to exact npm versions, downloaded on demand, and cached under `~/.cache/vitepad/frameworks`. No ESLint, Biome, Husky, or formatting pipeline is included.
 
 ## Features
 
@@ -42,7 +42,7 @@ Tailwind CSS is enabled by default. Framework packages are resolved to exact npm
 
 **Styling and environment**
 
-- Tailwind CSS v4 is available by default through `@tailwindcss/vite`
+- UnoCSS is available by default through `unocss/vite` with `presetUno`
 - Framework dependencies are exposed through the temporary Vite workspace
 - Missing framework packages are linked into local `node_modules` for editor type resolution
 - Existing local packages are left untouched, and `package.json` is not modified

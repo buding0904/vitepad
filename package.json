@@ -35,7 +35,7 @@
     "cli",
     "playground",
     "frontend",
-    "tailwindcss",
+    "unocss",
     "react",
     "vue",
     "svelte",
@@ -55,9 +55,8 @@
     "access": "public"
   },
   "dependencies": {
-    "@tailwindcss/vite": "latest",
     "picocolors": "latest",
-    "tailwindcss": "latest",
+    "unocss": "latest",
     "vite": "latest"
   },
   "devDependencies": {
