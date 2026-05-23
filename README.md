@@ -38,7 +38,6 @@ UnoCSS is enabled by default. Framework packages are resolved to exact npm versi
 - Test the same component against different framework versions without touching `package.json`
 - `latest` and semver ranges are resolved to exact versions before caching
 - Cache keys use exact versions, for example `react-19.2.6`
-- `--force-install` recreates the selected framework cache
 
 **Styling and environment**
 
@@ -110,10 +109,9 @@ vitepad <entry> [options]
 |--------|-------------|
 | `<entry>` | Entry file to run |
 | `-f, --framework <name>` | `auto`, `react`, `preact`, `solid`, `vue`, `svelte`, or `vanilla`; version specs are supported, e.g. `react@18` |
-| `--force-install` | Reinstall the selected framework cache |
 | `-p, --port <number>` | Dev server port (default: `8000`) |
+| `--strictPort` | Exit if the configured port is already in use |
 | `--host <host>` | Dev server host (default: `0.0.0.0`) |
-| `--no-open` | Do not open the browser automatically |
 | `-c, --config <file>` | Merge an extra Vite config file |
 | `-h, --help` | Show help |
 
@@ -121,14 +119,14 @@ Examples:
 
 ```bash
 vitepad ./App.tsx --framework react@18 --port 3000
-vitepad ./App.vue --host 127.0.0.1 --no-open
+vitepad ./App.vue --host 127.0.0.1
 vitepad ./App.svelte --config ./vite.extra.js
-vitepad ./App.tsx --framework react@latest --force-install
+vitepad ./App.tsx --framework react@latest
 ```
 
 ## Editor Types
 
-VSCode's TypeScript server resolves imports and JSX types from the opened file's directory tree, not from vitepad's temporary Vite workspace. To keep editor diagnostics aligned with the file you run, vitepad creates lightweight symlinks for missing framework packages inside the entry file directory's `node_modules`.
+VSCode's TypeScript server resolves imports and JSX types from the opened file's directory tree, not from vitepad's temporary Vite workspace. To keep editor diagnostics aligned with the file you run, vitepad looks from the entry file directory up through its parent directories for framework packages before linking anything. If a package cannot be resolved from that directory tree, vitepad creates a lightweight symlink inside the entry file directory's `node_modules`.
 
 For React, vitepad links `react`, `react-dom`, `@types/react`, and `@types/react-dom` when they are missing. Existing packages are left untouched, so a project that already has React installed keeps using its local version for editor types. Runtime dependencies still come from vitepad's cache, and vitepad does not write to `package.json`.
 

@@ -19,6 +19,7 @@ import {
   type PackageLink,
   type ResolvedFramework,
 } from './frameworks.js'
+import { packageVersion } from '../version.js'
 
 export type EntryMode = 'main' | 'component'
 export type { Framework, FrameworkName, FrameworkSpec, ResolvedFramework }
@@ -27,12 +28,12 @@ export interface VitepadOptions {
   entry?: string
   framework: Framework
   frameworkVersion: string
-  forceInstall: boolean
   port: number
+  strictPort: boolean
   host: string
-  open: boolean | string
   config?: string
   help: boolean
+  version: boolean
 }
 
 const rootDir = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -45,6 +46,11 @@ export async function run(argv: string[]): Promise<void> {
 
   if (options.help) {
     console.log(helpText())
+    return
+  }
+
+  if (options.version) {
+    console.log(await packageVersion())
     return
   }
 
@@ -69,7 +75,7 @@ export async function run(argv: string[]): Promise<void> {
   })
   validateCombination({ mode, framework: framework.name, extension })
 
-  const resolvedFramework = await resolveFramework(framework, { forceInstall: options.forceInstall })
+  const resolvedFramework = await resolveFramework(framework, { forceInstall: false })
   await setupEditorPackages(path.dirname(entry), resolvedFramework.editorPackageLinks)
   const workspace = await createWorkspace({
     entry,
@@ -85,7 +91,8 @@ export async function run(argv: string[]): Promise<void> {
     server: {
       host: options.host,
       port: options.port,
-      open: options.open,
+      strictPort: options.strictPort,
+      open: false,
       watch: {
         ignored: (file: string) => normalizePath(file).startsWith(`${normalizePath(workspace)}/`),
       },
@@ -137,23 +144,25 @@ export function parseArgs(argv: string[]): VitepadOptions {
   const options: VitepadOptions = {
     framework: 'auto',
     frameworkVersion: 'latest',
-    forceInstall: false,
     port: 8000,
+    strictPort: false,
     host: '0.0.0.0',
-    open: '/',
     help: false,
+    version: false,
   }
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === '-h' || arg === '--help') {
       options.help = true
+    } else if (arg === '-v' || arg === '--version') {
+      options.version = true
     } else if (arg === '--framework' || arg === '-f') {
       Object.assign(options, parseFramework(readValue(argv, ++index, arg)))
     } else if (arg.startsWith('--framework=')) {
       Object.assign(options, parseFramework(arg.slice('--framework='.length)))
-    } else if (arg === '--force-install') {
-      options.forceInstall = true
+    } else if (arg === '--strictPort') {
+      options.strictPort = true
     } else if (arg === '--port' || arg === '-p') {
       options.port = Number(readValue(argv, ++index, arg))
     } else if (arg.startsWith('--port=')) {
@@ -162,10 +171,6 @@ export function parseArgs(argv: string[]): VitepadOptions {
       options.host = readValue(argv, ++index, arg)
     } else if (arg.startsWith('--host=')) {
       options.host = arg.slice('--host='.length)
-    } else if (arg === '--no-open') {
-      options.open = false
-    } else if (arg === '--open') {
-      options.open = '/'
     } else if (arg === '--config' || arg === '-c') {
       options.config = readValue(argv, ++index, arg)
     } else if (arg.startsWith('--config=')) {
@@ -261,12 +266,9 @@ async function linkWorkspacePackage(nodeModulesDir: string, link: PackageLink): 
 async function setupEditorPackages(projectDir: string, links: PackageLink[]): Promise<void> {
   if (links.length === 0) return
 
-  const nodeModulesDir = path.join(projectDir, 'node_modules')
-  await fs.mkdir(nodeModulesDir, { recursive: true })
-
   const linked: string[] = []
   for (const link of links) {
-    const result = await linkEditorPackage(nodeModulesDir, link)
+    const result = await linkEditorPackage(projectDir, link)
     if (result === 'linked') {
       linked.push(link.name)
     }
@@ -277,8 +279,12 @@ async function setupEditorPackages(projectDir: string, links: PackageLink[]): Pr
   }
 }
 
-async function linkEditorPackage(nodeModulesDir: string, link: PackageLink): Promise<'linked' | 'skipped'> {
+async function linkEditorPackage(projectDir: string, link: PackageLink): Promise<'linked' | 'skipped'> {
   const source = await fs.realpath(link.source)
+  const existingResolvablePackage = await findResolvablePackage(projectDir, link.name)
+  if (existingResolvablePackage) return 'skipped'
+
+  const nodeModulesDir = path.join(projectDir, 'node_modules')
   const target = path.join(nodeModulesDir, link.name)
   await fs.mkdir(path.dirname(target), { recursive: true })
 
@@ -293,6 +299,20 @@ async function linkEditorPackage(nodeModulesDir: string, link: PackageLink): Pro
 
   await fs.symlink(source, target, 'dir')
   return 'linked'
+}
+
+async function findResolvablePackage(fromDir: string, packageName: string): Promise<string | null> {
+  let current = path.resolve(fromDir)
+
+  while (true) {
+    const candidate = path.join(current, 'node_modules', packageName)
+    const existing = await fs.lstat(candidate).catch(() => null)
+    if (existing) return candidate
+
+    const parent = path.dirname(current)
+    if (parent === current) return null
+    current = parent
+  }
 }
 
 function htmlTemplate(): string {
@@ -434,10 +454,9 @@ Entries:
 Options:
   -f, --framework <name>    auto, react, preact, solid, vue, svelte, vanilla
                             Version specs are supported, e.g. react@18, vue@3.4.
-  --force-install           Reinstall the selected framework cache.
   -p, --port <number>       Dev server port. Default: 8000
+  --strictPort              Exit if the configured port is already in use.
   --host <host>             Dev server host. Default: 0.0.0.0
-  --no-open                 Do not open the browser automatically.
   -c, --config <file>       Merge an extra Vite config file.
   -h, --help                Show help.
 `
