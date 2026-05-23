@@ -1,5 +1,12 @@
 # Changelog
 
+# [](https://github.com/buding0904/vitepad/compare/v0.3.1...vnull) (2026-05-23)
+
+
+### chore
+
+* add version flag in cli ([](https://github.com/buding0904/vitepad/commit/6a04e4201f73ea98243319edd2c7bc305889534f))
+
 # [](https://github.com/buding0904/vitepad/compare/v0.3.0...vnull) (2026-05-20)
 
 
